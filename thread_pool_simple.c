@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 
 //in this design, jobs' priority is last is highest!!
@@ -30,8 +31,16 @@ static void *thread_function(void *ptr){
 
     while(1){
         //lock num_job_mutex and jobs_mutex
-        pthread_mutex_lock(&threads->pool->num_jobs_mutex);
-        pthread_mutex_lock(&threads->pool->jobs_mutex);
+        if( pthread_mutex_lock(&threads->pool->num_jobs_mutex) != 0)
+        {
+            perror("thread_function:pthread_mutex_lock(num_jobs_mutex)");
+            pthread_exit(NULL);
+        }
+        if(pthread_mutex_lock(&threads->pool->jobs_mutex) != 0)
+        {
+            perror("thread_function:pthread_mutex_lock(jobs_mutex)");
+            pthread_exit(NULL);
+        }
         //if no jobs, wait for pthread_cond_signal.
         //all alive threads are looping here, await for a job!!!
         while(threads->pool->jobs == NULL){
@@ -44,11 +53,20 @@ static void *thread_function(void *ptr){
             REMOVE_JOB(job, threads->pool->jobs);
             threads->pool->num_jobs--;
             //then signal one pthread09
-            pthread_cond_signal(&threads->pool->jobs_not_full_cond);
+            if(pthread_cond_signal(&threads->pool->jobs_not_full_cond) != 0){
+                perror("pthread_function:pthread_cond_signal(jobs_not_full_cond)");
+                pthread_exit(NULL);
+            }
         }
 
-        pthread_mutex_unlock(&threads->pool->num_jobs_mutex);
-        pthread_mutex_unlock(&threads->pool->num_jobs_mutex);
+        if(0 != pthread_mutex_unlock(&threads->pool->num_jobs_mutex)){
+            perror("thread_function:pthread_mutex_unlock(num_jobs_mutex)");
+            pthread_exit(NULL);
+        }
+        if(0 != pthread_mutex_unlock(&threads->pool->jobs_mutex)){
+            perror("thread_function:pthread_mutex_unlock(jobs_mutex)");
+            pthread_exit(NULL);
+        }
 
         if(threads->killed)break;
         if(job == NULL)continue;
@@ -66,7 +84,7 @@ int thread_pool_init(thread_pool *pool, int num_threads){
     int i = 0;
     thread_state *threads;
     pthread_cond_t blank_cond = PTHREAD_COND_INITIALIZER;
-    pthread_cond_t blank_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t blank_mutex = PTHREAD_MUTEX_INITIALIZER;
 
     if(num_threads < 1)num_threads = 1;
     memset(pool, 0, sizeof(*pool));
@@ -113,10 +131,20 @@ void thread_pool_shutdown(thread_pool *pool){
 //unlimit limitation of number of "handing jobs".
 //one job come in , if there is idle threads, the job can be "on handling"
 void thread_pool_add_job(thread_pool *pool, thread_job *job){
-    pthread_mutex_lock(&pool->jobs_mutex);
+    if(0 != pthread_mutex_lock(&pool->jobs_mutex)){
+        perror("thread_pool_add_job:pthread_mutex_lock(jobs_mutex)");
+        pthread_exit(NULL);
+    }
     ADD_THREAD(job, pool->jobs);
-    pthread_cond_signal(&pool->jobs_not_empty_cond);
-    pthread_mutex_unlock(&pool->jobs_mutex);
+    //pool->num_jobs++;
+    if(0 != pthread_cond_signal(&pool->jobs_not_empty_cond)){
+        perror("thread_pool_add_job:pthread_cond_signal(jobs_not_empty_cond)");
+        pthread_exit(NULL);
+    }
+    if(0 != pthread_mutex_unlock(&pool->jobs_mutex)){
+        perror("thread_pool_add_job:thread_mutex_unlock(jobs_mutex)");
+        pthread_exit(NULL);
+    }
 }
 
 //arrange "handling jobs" at most 2 times of threads. other jobs will wait for handling.

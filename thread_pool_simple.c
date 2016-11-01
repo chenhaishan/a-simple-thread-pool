@@ -4,6 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#define _GNU_SOURCE
+pid_t gettid(void){
+    return syscall(SYS_gettid);
+}
 
 
 //in this design, jobs' priority is last is highest!!
@@ -71,7 +78,7 @@ static void *thread_function(void *ptr){
         if(threads->killed)break;
         if(job == NULL)continue;
         //if have job, handle it
-        job->job_function(job);
+        job->job_function(job,threads->thread_id);
     }
 
     free(threads);//before threads is freed, the job list's head has already been replaced with threads->next

@@ -30,7 +30,7 @@ struct _thread_state{
 };
 
 struct _thread_job{
-    void (*job_function)(thread_job *job);//job's function
+    void (*job_function)(thread_job *job,unsigned int ttid);//job's function
     void *user_data;
     thread_job *prev;
     thread_job *next;

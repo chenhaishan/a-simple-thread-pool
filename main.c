@@ -4,53 +4,52 @@
 #include <pthread.h>
 #include <assert.h>
 #include <sys/types.h>
-#include <sys/syscall.h>
 #include <stdlib.h>
 #include "threadpool.h"
 
-pid_t gettid(void){
-    return syscall(SYS_gettid);
-}
+#define NUMJOB 50
+#define NUMTHREAD 12
 
 struct{
     pthread_mutex_t m;
-    int array[100];
-} job_area = {PTHREAD_MUTEX_INITIALIZER};
+    unsigned int array[NUMJOB];
+} job_area = {PTHREAD_MUTEX_INITIALIZER,{-1}};
 
-void fill_thread_id(thread_job *job){
-    //we need not make job to be mutex,because we've delete
-    //it from the jobs chain!!
-    /*array[sequence of job] = thread id*/
-    job_area.array[*((int*)(job->user_data))] = gettid();
-    printf("sequence number of job is:%d, and handling thread id is:%d\n",
-           *((int*)(job->user_data)), gettid());
+unsigned int flag = 0;
+
+void fill_thread_id(thread_job *job,unsigned int ttid){
+    job_area.array[*((int *)(job->user_data))] = ttid;
+    flag++;
     free(job->user_data);
     free(job);
+    sleep(1);
 }
 
 int main()
 {
     thread_pool pool;
-    thread_pool_init(&pool, 10);
+    thread_pool_init(&pool, NUMTHREAD);
 
     int seq = 0;
     thread_job *job;
-    while(seq != 500){
+    while(seq != NUMJOB){
         job = malloc(sizeof(thread_job));
         job->job_function = fill_thread_id;
         job->user_data = malloc(sizeof(int));
         *((int*)(job->user_data)) = seq;
         job->prev = NULL;
         job->next = NULL;
-        seq++;
         thread_pool_add_job(&pool, job);
+        seq++;
     }
-/*
-    for(seq = 0; seq != 100; ++seq){
+
+    while(flag != NUMJOB);
+    for(seq = 0; seq != NUMJOB; ++seq){
         printf("sequence number of job is:%d, and handling thread id is:%d\n",
                seq, job_area.array[seq]);
     }
-*/
+
+
     thread_pool_shutdown(&pool);
     thread_pool_wait(&pool);
 
